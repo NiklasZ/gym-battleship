@@ -26,6 +26,14 @@ def is_notebook():
 
 
 class BattleshipEnv(gym.Env):
+    """
+    # TODO more detailed description
+    0: unexplored, meaning no missile has been fired here yet.
+    1: a missile has been fired here and hit nothing
+    2: a missile has been fired here and hit a ship
+    3: a missile has been fired here and the affected ship has sunk.
+    """
+
     def __init__(self,
                  board_size: Tuple = None,
                  ship_sizes: dict = None,
@@ -35,36 +43,45 @@ class BattleshipEnv(gym.Env):
         self.ship_sizes = ship_sizes or {5: 1, 4: 1, 3: 2, 2: 1}
         self.board_size = board_size or (10, 10)
 
-        self.board = None  # Hidden state updated throughout the game
+        # (m x n) matrix of board_size where each cell is either 0 (empty) or 1 (contains ship).
+        # This state is hidden from the player.
+        self.board = None
+        # (m x n) matrix of board_size, where each cell has a state from 0-3. This state is visible to the player.
+        self.observation = None
         self.board_generated = None  # Hidden state generated and left not updated (for debugging purposes)
-        self.observation = None  # the observation is a (2, n, m) matrix, the first channel is for the missile that was launched on a cell that contained a boat, the second channel is for the missile launched that was launch on a cell that was not containing any boat
+        self.ship_positions = None  # Ship[] list containing list of ship positions
+        self.remaining_ships = None  # Dict of ships that haven't been sunk yet.
 
         self.done = None
         self.step_count = None
         self.episode_steps = episode_steps
 
         reward_dictionary = {} if reward_dictionary is None else reward_dictionary
-        default_reward_dictionary = reward_dictionary or {  # todo further tuning of the rewards required
-            'win': 100,
-            'missed': 0,
-            'touched': 1,
-            'repeat_missed': -1,
-            'repeat_touched': -0.5
-            }
-        self.reward_dictionary = {key: reward_dictionary.get(key, default_reward_dictionary[key]) for key in default_reward_dictionary.keys()}
+        default_reward_dictionary = {  # todo further tuning of the rewards required
+            'win': 100,             # for sinking all ships
+            'missed': 0,            # for missing a shot
+            'hit': 1,               # for hitting a ship
+            'repeat_missed': -1,    # for shooting at an already missed cell
+            'repeat_hit': -0.5      # for shooting at an already hit cell
+        }
+        # use default entries + whatever is provided as input
+        self.reward_dictionary = default_reward_dictionary | reward_dictionary
 
         self.action_space = spaces.Discrete(self.board_size[0] * self.board_size[1])
-        self.observation_space = spaces.Box(low=0, high=1, shape=(2, self.board_size[0], self.board_size[1]), dtype=int)
+        self.observation_space = spaces.Box(low=0, high=3,
+                                            shape=(self.board_size[0], self.board_size[1]), dtype=int)
 
     def step(self, raw_action: Union[int, tuple]) -> Tuple[np.ndarray, int, bool, dict]:
         if isinstance(raw_action, int):
-            assert (0 <= raw_action < self.board_size[0]*self.board_size[1]),\
-                "Invalid action (The encoded action is outside of the limits)"
+            limit = self.board_size[0] * self.board_size[1]
+            assert (0 <= raw_action < limit), \
+                f"Invalid action (The encoded action {raw_action} is outside of the board limits {limit})"
             action = Action(x=raw_action % self.board_size[0], y=raw_action // self.board_size[0])
 
         elif isinstance(raw_action, tuple):
-            assert (0 <= raw_action[0] < self.board_size[0] and 0 <= raw_action[1] < self.board_size[1]),\
-                "Invalid action (The action is outside the board)"
+            assert (0 <= raw_action[0] < self.board_size[0] and 0 <= raw_action[1] < self.board_size[1]), \
+                f"Invalid action (The action {raw_action} " \
+                f"is outside the board limits ({self.board_size[0]},{self.board_size[1]}))"
             action = Action(x=raw_action[0], y=raw_action[1])
 
         else:
@@ -76,49 +93,62 @@ class BattleshipEnv(gym.Env):
         if self.step_count >= self.episode_steps:
             self.done = True
 
-        # Touched (board[x, y] == 1)
+        # Hit (board[x, y] == 1)
         if self.board[action.x, action.y] == 1:
             self.board[action.x, action.y] = 0
-            self.observation[0, action.x, action.y] = 1
+
+            self.observation[action.x, action.y] = 2
+
+            ship = self._find_hit_ship(action)
+            # If all parts of the ship were hit, it sinks
+            if np.all(self.observation[ship.min_x:ship.max_x, ship.min_y:ship.max_y] == 2):
+                self.observation[ship.min_x:ship.max_x, ship.min_y:ship.max_y] = 3
+                ship_size = max(ship.max_x - ship.min_x, ship.max_y - ship.min_y)
+                self.remaining_ships[ship_size] -= 1
+
             # Win (No boat left)
             if not self.board.any():
                 self.done = True
-                return self.observation, self.reward_dictionary['win'], self.done, {}
-            return self.observation, self.reward_dictionary['touched'], self.done, {}
+                return self.observation, self.reward_dictionary['win'], self.done, self.remaining_ships
+            return self.observation, self.reward_dictionary['hit'], self.done, self.remaining_ships
 
-        # Repeat touched (observation[0, x, y] == 1)
-        elif self.observation[0, action.x, action.y] == 1:
-            return self.observation, self.reward_dictionary['repeat_touched'], self.done, {}
+        # Repeat hit or sink (observation[x, y] == 2,3)
+        elif self.observation[action.x, action.y] in [2, 3]:
+            return self.observation, self.reward_dictionary['repeat_hit'], self.done, self.remaining_ships
 
-        # Repeat missed (observation[1, x, y] == 1)
-        elif self.observation[1, action.x, action.y] == 1:
-            return self.observation, self.reward_dictionary['repeat_missed'], self.done, {}
+        # Repeat missed (observation[x, y] == 1)
+        elif self.observation[action.x, action.y] == 1:
+            return self.observation, self.reward_dictionary['repeat_missed'], self.done, self.remaining_ships
 
-        # Missed (Action not repeated and boat(s) not touched)
+        # Missed (Action not repeated and boat(s) not hit)
         else:
-            self.observation[1, action.x, action.y] = 1
-            return self.observation, self.reward_dictionary['missed'], self.done, {}
+            self.observation[action.x, action.y] = 1
+            return self.observation, self.reward_dictionary['missed'], self.done, self.remaining_ships
 
     def reset(self) -> np.ndarray:
         self._set_board()
         self.board_generated = deepcopy(self.board)
-        self.observation = np.zeros((2, *self.board_size), dtype=np.float32)
+        self.observation = np.zeros(self.board_size, dtype=np.float32)
+        self.remaining_ships = deepcopy(self.ship_sizes)
         self.step_count = 0
         self.done = False
         return self.observation
 
     def _set_board(self) -> None:
         self.board = np.zeros(self.board_size, dtype=np.float32)
+        self.ship_positions = []
         for ship_size, ship_count in self.ship_sizes.items():
             for _ in range(ship_count):
-                self._place_ship(ship_size)
+                self.ship_positions.append(self._place_ship(ship_size))
 
-    def _place_ship(self, ship_size: int) -> None:
+    def _place_ship(self, ship_size: int) -> Ship:
         can_place_ship = False
+        ship = None
         while not can_place_ship:  # todo add protection infinite loop
             ship = self._get_ship(ship_size, self.board_size)
             can_place_ship = self._is_place_empty(ship)
         self.board[ship.min_x:ship.max_x, ship.min_y:ship.max_y] = True
+        return ship
 
     @staticmethod
     def _get_ship(ship_size: int, board_size: tuple) -> Ship:
@@ -134,10 +164,23 @@ class BattleshipEnv(gym.Env):
     def _is_place_empty(self, ship: Ship) -> bool:
         return np.count_nonzero(self.board[ship.min_x:ship.max_x, ship.min_y:ship.max_y]) == 0
 
+    def _find_hit_ship(self, action: Action) -> Union[None, Ship]:
+
+        def ship_filter(s: Ship):
+            return s.min_x <= action.x < s.max_x and s.min_y <= action.y < s.max_y
+
+        matches = list(filter(ship_filter, self.ship_positions))
+        # Sanity-check. Can probably delete later.
+        assert (len(matches) == 1), \
+            f"Error: Expected to find exactly 1 ship on cell {action}. Found: {matches}"
+        return matches[0]
+
+    # TODO re-render example images for README.md
     def render(self, mode='human'):
         board = np.empty(self.board_size, dtype=str)
-        board[self.observation[0] != 0] = '❌'
-        board[self.observation[1] != 0] = '⚫'
+        board[self.observation == 2] = '🞇'
+        board[self.observation == 3] = '❌'
+        board[self.observation == 1] = '⚫'
         self._render(board)
 
     def render_board_generated(self):
@@ -145,6 +188,7 @@ class BattleshipEnv(gym.Env):
         board[self.board_generated != 0] = '⬛'
         self._render(board)
 
+    # TODO in-place render could look nice (create GIF from it).
     @staticmethod
     def _render(board, symbol='⬜'):
         import pandas as pd

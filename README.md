@@ -179,12 +179,20 @@ The render and customization is identical as in the `Battleship-v0` environment.
 
 ## Requirements
 
-gym  
-numpy
+* python 3.9+
+* gym  
+* numpy
+* pandas
 
-## Installation
-
+## Dependency Installation
 The command to install the repository via pip is:
 ```bash
 pip install git+https://github.com/thomashirtz/gym-battleship#egg=gym-battleship
+```
+
+## Repository Installation
+To contribute to the repository, clone it and run:
+
+```bash
+pip install -e .
 ```
