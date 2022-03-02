@@ -1,4 +1,5 @@
-
+gym_battleship.egg-info
 *.xml
 *.iml
 *.pyc
+.idea
