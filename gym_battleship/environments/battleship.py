@@ -85,7 +85,7 @@ class BattleshipEnv(gym.Env):
             action = Action(x=raw_action[0], y=raw_action[1])
 
         else:
-            raise AssertionError("Invalid action (Unsupported raw_action type)")
+            raise AssertionError(f"Invalid action (Unsupported raw_action type: {raw_action})")
 
         self.step_count += 1
 
@@ -128,14 +128,14 @@ class BattleshipEnv(gym.Env):
     def reset(self) -> np.ndarray:
         self._set_board()
         self.board_generated = deepcopy(self.board)
-        self.observation = np.zeros(self.board_size, dtype=np.float32)
+        self.observation = np.zeros(self.board_size, dtype=np.int32)
         self.remaining_ships = deepcopy(self.ship_sizes)
         self.step_count = 0
         self.done = False
         return self.observation
 
     def _set_board(self) -> None:
-        self.board = np.zeros(self.board_size, dtype=np.float32)
+        self.board = np.zeros(self.board_size, dtype=np.int32)
         self.ship_positions = []
         for ship_size, ship_count in self.ship_sizes.items():
             for _ in range(ship_count):
