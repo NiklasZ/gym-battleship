@@ -7,9 +7,11 @@ from typing import Tuple
 from typing import Optional
 from collections import namedtuple
 
-
 Ship = namedtuple('Ship', ['min_x', 'max_x', 'min_y', 'max_y'])
 Action = namedtuple('Action', ['x', 'y'])
+
+# TODO these should be configurable (also change observation space)
+EMPTY, HIT, MISS, SUNK = 1, 2, 3, 4
 
 
 def is_notebook():
@@ -46,7 +48,7 @@ class BattleshipEnv(gym.Env):
         # (m x n) matrix of board_size where each cell is either 0 (empty) or 1 (contains ship).
         # This state is hidden from the player.
         self.board = None
-        # (m x n) matrix of board_size, where each cell has a state from 0-3. This state is visible to the player.
+        # (m x n) matrix of board_size, where each cell has a state EMPTY,HIT,MISS,SUNK. This state is visible to the player.
         self.observation = None
         self.board_generated = None  # Hidden state generated and left not updated (for debugging purposes)
         self.ship_positions = None  # Ship[] list containing list of ship positions
@@ -55,24 +57,33 @@ class BattleshipEnv(gym.Env):
         self.done = None
         self.step_count = None
         self.episode_steps = episode_steps
+        self.batched = False  # Unrelated flag that some machine learning frameworks check for.
 
         reward_dictionary = {} if reward_dictionary is None else reward_dictionary
         default_reward_dictionary = {  # todo further tuning of the rewards required
-            'win': 100,             # for sinking all ships
-            'missed': 0,            # for missing a shot
-            'hit': 1,               # for hitting a ship
-            'repeat_missed': -1,    # for shooting at an already missed cell
-            'repeat_hit': -0.5      # for shooting at an already hit cell
+            'win': 100,  # for sinking all ships
+            'missed': 0,  # for missing a shot
+            'hit': 1,  # for hitting a ship
+            'repeat_missed': -1,  # for shooting at an already missed cell
+            'repeat_hit': -0.5  # for shooting at an already hit cell
         }
         # use default entries + whatever is provided as input
         self.reward_dictionary = default_reward_dictionary | reward_dictionary
 
         self.action_space = spaces.Discrete(self.board_size[0] * self.board_size[1])
-        self.observation_space = spaces.Box(low=0, high=3,
+        self.observation_space = spaces.Box(low=EMPTY, high=SUNK,
                                             shape=(self.board_size[0], self.board_size[1]), dtype=int)
 
-    def step(self, raw_action: Union[int, tuple]) -> Tuple[np.ndarray, int, bool, dict]:
-        if isinstance(raw_action, int):
+    def step(self, input_action: Union[int, tuple, np.ndarray]) -> Tuple[np.ndarray, int, bool, dict]:
+
+        if isinstance(input_action, np.ndarray):
+            size = input_action.size
+            assert 1 <= size <= 2, f'action numpy array must be size 1 or 2. Received {size}'
+            raw_action = np.asscalar(input_action) if size == 1 else (input_action[0], input_action[1])
+        else:
+            raw_action = input_action
+
+        if isinstance(raw_action, (int, np.integer)):
             limit = self.board_size[0] * self.board_size[1]
             assert (0 <= raw_action < limit), \
                 f"Invalid action (The encoded action {raw_action} is outside of the board limits {limit})"
@@ -85,7 +96,8 @@ class BattleshipEnv(gym.Env):
             action = Action(x=raw_action[0], y=raw_action[1])
 
         else:
-            raise AssertionError(f"Invalid action (Unsupported raw_action type: {raw_action})")
+            raise AssertionError(
+                f"Invalid action (Unsupported raw_action type: {type(raw_action)}, value: {raw_action})")
 
         self.step_count += 1
 
@@ -97,12 +109,12 @@ class BattleshipEnv(gym.Env):
         if self.board[action.x, action.y] == 1:
             self.board[action.x, action.y] = 0
 
-            self.observation[action.x, action.y] = 2
+            self.observation[action.x, action.y] = HIT
 
             ship = self._find_hit_ship(action)
             # If all parts of the ship were hit, it sinks
-            if np.all(self.observation[ship.min_x:ship.max_x, ship.min_y:ship.max_y] == 2):
-                self.observation[ship.min_x:ship.max_x, ship.min_y:ship.max_y] = 3
+            if np.all(self.observation[ship.min_x:ship.max_x, ship.min_y:ship.max_y] == HIT):
+                self.observation[ship.min_x:ship.max_x, ship.min_y:ship.max_y] = SUNK
                 ship_size = max(ship.max_x - ship.min_x, ship.max_y - ship.min_y)
                 self.remaining_ships[ship_size] -= 1
 
@@ -112,23 +124,23 @@ class BattleshipEnv(gym.Env):
                 return self.observation, self.reward_dictionary['win'], self.done, self.remaining_ships
             return self.observation, self.reward_dictionary['hit'], self.done, self.remaining_ships
 
-        # Repeat hit or sink (observation[x, y] == 2,3)
-        elif self.observation[action.x, action.y] in [2, 3]:
+        # Repeat hit or sink (observation[x, y] == HIT,SUNK)
+        elif self.observation[action.x, action.y] in [HIT, SUNK]:
             return self.observation, self.reward_dictionary['repeat_hit'], self.done, self.remaining_ships
 
-        # Repeat missed (observation[x, y] == 1)
-        elif self.observation[action.x, action.y] == 1:
+        # Repeat missed (observation[x, y] == MISS)
+        elif self.observation[action.x, action.y] == MISS:
             return self.observation, self.reward_dictionary['repeat_missed'], self.done, self.remaining_ships
 
         # Missed (Action not repeated and boat(s) not hit)
         else:
-            self.observation[action.x, action.y] = 1
+            self.observation[action.x, action.y] = MISS
             return self.observation, self.reward_dictionary['missed'], self.done, self.remaining_ships
 
     def reset(self) -> np.ndarray:
         self._set_board()
         self.board_generated = deepcopy(self.board)
-        self.observation = np.zeros(self.board_size, dtype=np.int32)
+        self.observation = np.full(self.board_size, EMPTY, dtype=np.int32)
         self.remaining_ships = deepcopy(self.ship_sizes)
         self.step_count = 0
         self.done = False
@@ -178,9 +190,9 @@ class BattleshipEnv(gym.Env):
     # TODO re-render example images for README.md
     def render(self, mode='human'):
         board = np.empty(self.board_size, dtype=str)
-        board[self.observation == 2] = '🞇'
-        board[self.observation == 3] = '❌'
-        board[self.observation == 1] = '⚫'
+        board[self.observation == HIT] = '🞇'
+        board[self.observation == SUNK] = '❌'
+        board[self.observation == MISS] = '⚫'
         self._render(board)
 
     def render_board_generated(self):
