@@ -4,7 +4,13 @@ import pytest
 import numpy as np
 
 from gym_battleship import BattleshipEnv
-from gym_battleship.environments.battleship import Ship, EMPTY, HIT, MISS, SUNK
+from gym_battleship.environments.battleship import Ship
+
+e = BattleshipEnv()
+UNKNOWN = e.observation_dictionary['unknown']
+HIT = e.observation_dictionary['hit']
+MISS = e.observation_dictionary['missed']
+SUNK = e.observation_dictionary['sunk']
 
 
 def test_initialisation_1():
@@ -24,7 +30,7 @@ def test_initialisation_1():
     assert env.episode_steps == 100
 
     env.reset()
-    assert np.all(env.observation == EMPTY)
+    assert np.all(env.observation == UNKNOWN)
     assert env.remaining_ships == env.ship_sizes
     assert np.count_nonzero(env.board_generated) == 5 + 4 + 3 * 2 + 2
 
@@ -39,7 +45,8 @@ def test_initialisation_2():
                         reward_dictionary={
                             'win': 10,
                             'missed': -0.25,
-                        })
+                        },
+                        observation_dictionary={'unknown': 0.5})
     assert env.ship_sizes == {3: 1}
     assert env.board_size == (9, 9)
     assert env.reward_dictionary == {
@@ -53,7 +60,7 @@ def test_initialisation_2():
     assert env.episode_steps == 20
 
     env.reset()
-    assert np.all(env.observation == EMPTY)
+    assert np.all(env.observation == 0.5)
     assert env.remaining_ships == env.ship_sizes
     assert np.count_nonzero(env.board_generated) == 3
 
