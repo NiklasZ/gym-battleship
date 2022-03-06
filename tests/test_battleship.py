@@ -7,10 +7,6 @@ from gym_battleship import BattleshipEnv
 from gym_battleship.environments.battleship import Ship
 
 e = BattleshipEnv()
-UNKNOWN = e.observation_dictionary['unknown']
-HIT = e.observation_dictionary['hit']
-MISS = e.observation_dictionary['missed']
-SUNK = e.observation_dictionary['sunk']
 
 
 def test_initialisation_1():
@@ -30,7 +26,7 @@ def test_initialisation_1():
     assert env.episode_steps == 100
 
     env.reset()
-    assert np.all(env.observation == UNKNOWN)
+    assert np.all(env.observation == 0)
     assert env.remaining_ships == env.ship_sizes
     assert np.count_nonzero(env.board_generated) == 5 + 4 + 3 * 2 + 2
 
@@ -45,8 +41,7 @@ def test_initialisation_2():
                         reward_dictionary={
                             'win': 10,
                             'missed': -0.25,
-                        },
-                        observation_dictionary={'unknown': 0.5})
+                        })
     assert env.ship_sizes == {3: 1}
     assert env.board_size == (9, 9)
     assert env.reward_dictionary == {
@@ -60,7 +55,6 @@ def test_initialisation_2():
     assert env.episode_steps == 20
 
     env.reset()
-    assert np.all(env.observation == 0.5)
     assert env.remaining_ships == env.ship_sizes
     assert np.count_nonzero(env.board_generated) == 3
 
@@ -83,16 +77,20 @@ def test_miss_ship():
 
     # 1st shot
     state, reward, done, remaining_ships = env.step((0, 0))
-    assert np.count_nonzero(state == MISS) == 1
-    assert state[0, 0] == MISS
+    assert np.count_nonzero(state[..., 0]) == 1
+    assert state[0, 0, 0] == 1
+    assert np.count_nonzero(state[..., 1]) == 1
+    assert state[0, 0, 1] == 1
     assert reward == -0.25
     assert not done
     assert remaining_ships == {3: 1}
 
     # Aim at same spot again
     state, reward, done, remaining_ships = env.step((0, 0))
-    assert np.count_nonzero(state == MISS) == 1
-    assert state[0, 0] == MISS
+    assert np.count_nonzero(state[..., 0]) == 1
+    assert state[0, 0, 0] == 1
+    assert np.count_nonzero(state[..., 1]) == 1
+    assert state[0, 0, 1] == 1
     assert reward == -0.5
     assert not done
     assert remaining_ships == {3: 1}
@@ -116,16 +114,20 @@ def test_hit_ship():
 
     # 1st shot
     state, reward, done, remaining_ships = env.step((0, 4))
-    assert np.count_nonzero(state == HIT) == 1
-    assert state[0, 4] == 2
+    assert np.count_nonzero(state[..., 0] == 1) == 1
+    assert state[0, 4, 0] == 1
+    assert np.count_nonzero(state[..., 2] == 1) == 1
+    assert state[0, 4, 2] == 1
     assert reward == 1
     assert not done
     assert remaining_ships == {3: 1}
 
     # Aim at same spot again
     state, reward, done, remaining_ships = env.step((0, 4))
-    assert np.count_nonzero(state == HIT) == 1
-    assert state[0, 4] == 2
+    assert np.count_nonzero(state[..., 0] == 1) == 1
+    assert state[0, 4, 0] == 1
+    assert np.count_nonzero(state[..., 2] == 1) == 1
+    assert state[0, 4, 2] == 1
     assert reward == -0.5
     assert not done
     assert remaining_ships == {3: 1}
@@ -149,25 +151,27 @@ def test_sink_ship():
 
     # 1st shot
     state, reward, done, remaining_ships = env.step((0, 0))
-    assert np.count_nonzero(state == HIT) == 1
-    assert state[0, 0] == HIT
+    assert np.count_nonzero(state[..., 0] == 1) == 1
+    assert state[0, 0, 0] == 1
+    assert np.count_nonzero(state[..., 2] == 1) == 1
+    assert state[0, 0, 2] == 1
     assert reward == 1
     assert not done
     assert remaining_ships == {2: 2}
 
     # 2nd shot
     state, reward, done, remaining_ships = env.step((0, 1))
-    assert np.count_nonzero(state == SUNK) == 2
-    assert np.count_nonzero(state == HIT) == 0
-    assert state[0, 0] == SUNK and state[0, 1] == SUNK
+    assert np.count_nonzero(state[..., 0] == 1) == 2
+    assert np.count_nonzero(state[..., 2] == 1) == 0
+    assert np.count_nonzero(state[..., 3] == 1) == 2
+    assert state[0, 0, 3] == 1 and state[0, 1, 3] == 1
     assert reward == 1
     assert not done
     assert remaining_ships == {2: 1}
 
     # Aim at same spot again
     state, reward, done, remaining_ships = env.step((0, 1))
-    assert np.count_nonzero(state == SUNK) == 2
-    assert state[0, 1] == SUNK
+    assert np.count_nonzero(state[..., 0] == 1) == 2
     assert reward == -0.5
     assert not done
     assert remaining_ships == {2: 1}
@@ -196,16 +200,15 @@ def test_game_over_by_victory():
 
     # 1st shot
     state, reward, done, remaining_ships = env.step((0, 0))
-    assert np.count_nonzero(state == HIT) == 1
-    assert state[0, 0] == HIT
+    assert np.count_nonzero(state[..., 0] == 1) == 1
     assert reward == 1
     assert not done
     assert remaining_ships == {2: 1}
 
     # 2nd shot
     state, reward, done, remaining_ships = env.step((0, 1))
-    assert np.count_nonzero(state == SUNK) == 2
-    assert state[0, 0] == SUNK and state[0, 1] == SUNK
+    assert np.count_nonzero(state[..., 0] == 1) == 2
+    assert np.count_nonzero(state[..., 3] == 1) == 2
     assert reward == 100
     assert done
     assert remaining_ships == {2: 0}
