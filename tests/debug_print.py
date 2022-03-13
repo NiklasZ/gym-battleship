@@ -7,7 +7,7 @@ env.reset()
 for i in range(60):
     action = env.action_space.sample()
     print(f'\nFiring at {action}')
-    env.step(action)
+    result = env.step(action)
 
     env.render()
 

@@ -29,7 +29,9 @@ class BattleshipEnv(gym.Env):
                  board_size: Tuple = None,
                  ship_sizes: dict = None,
                  episode_steps: int = 100,
-                 reward_dictionary: Optional[dict] = None):
+                 reward_dictionary: Optional[dict] = None,
+                 get_invalid_action_mask=False,
+                 get_remaining_ships=False):
 
         self.ship_sizes = ship_sizes or {5: 1, 4: 1, 3: 2, 2: 1}
         self.board_size = board_size or (10, 10)
@@ -52,6 +54,8 @@ class BattleshipEnv(gym.Env):
         self.step_count = None
         self.episode_steps = episode_steps
         self.batched = False  # Unrelated flag that some machine learning frameworks check for.
+        self.get_invalid_action_mask = get_invalid_action_mask
+        self.get_remaining_ships = get_remaining_ships
 
         reward_dictionary = {} if reward_dictionary is None else reward_dictionary
         default_reward_dictionary = {  # todo further tuning of the rewards required
@@ -67,10 +71,9 @@ class BattleshipEnv(gym.Env):
         self.action_space = spaces.Discrete(self.board_size[0] * self.board_size[1])
         self.observation_space = spaces.Box(low=0, high=1,
                                             shape=(*self.board_size, 4),
-                                            dtype=np.int32)
+                                            dtype=np.float32)
 
-    def step(self, input_action: Union[int, tuple, np.ndarray]) -> Tuple[np.ndarray, int, bool, dict]:
-
+    def step(self, input_action: Union[int, tuple, np.ndarray]) -> Tuple[Union[np.ndarray, dict], int, bool, dict]:
         if isinstance(input_action, np.ndarray):
             size = input_action.size
             assert 1 <= size <= 2, f'action numpy array must be size 1 or 2. Received {size}'
@@ -118,31 +121,31 @@ class BattleshipEnv(gym.Env):
             # Win (No boat left)
             if not self.board.any():
                 self.done = True
-                return self.observation, self.reward_dictionary['win'], self.done, self.remaining_ships
-            return self.observation, self.reward_dictionary['hit'], self.done, self.remaining_ships
+                return self._get_observation(), self.reward_dictionary['win'], self.done, {}
+            return self._get_observation(), self.reward_dictionary['hit'], self.done, {}
 
         # Repeat hit or sink
         elif self.observation[action.x, action.y, 2] == 1 or self.observation[action.x, action.y, 3]:
-            return self.observation, self.reward_dictionary['repeat_hit'], self.done, self.remaining_ships
+            return self._get_observation(), self.reward_dictionary['repeat_hit'], self.done, {}
 
         # Repeat missed
         elif self.observation[action.x, action.y, 1] == 1:
-            return self.observation, self.reward_dictionary['repeat_missed'], self.done, self.remaining_ships
+            return self._get_observation(), self.reward_dictionary['repeat_missed'], self.done, {}
 
         # Missed (Action not repeated and boat(s) not hit)
         else:
             self.observation[action.x, action.y, 0] = 1
             self.observation[action.x, action.y, 1] = 1
-            return self.observation, self.reward_dictionary['missed'], self.done, self.remaining_ships
+            return self._get_observation(), self.reward_dictionary['missed'], self.done, {}
 
-    def reset(self) -> np.ndarray:
+    def reset(self) -> Union[np.ndarray, dict]:
         self._set_board()
         self.board_generated = deepcopy(self.board)
-        self.observation = np.zeros((*self.board_size, 4), dtype=np.int32)
+        self.observation = np.zeros((*self.board_size, 4), dtype=np.float32)
         self.remaining_ships = deepcopy(self.ship_sizes)
         self.step_count = 0
         self.done = False
-        return self.observation
+        return self._get_observation()
 
     def _set_board(self) -> None:
         self.board = np.zeros(self.board_size, dtype=np.int32)
@@ -184,6 +187,15 @@ class BattleshipEnv(gym.Env):
         assert (len(matches) == 1), \
             f"Error: Expected to find exactly 1 ship on cell {action}. Found: {matches}"
         return matches[0]
+
+    def _get_observation(self) -> Union[np.ndarray, dict]:
+        if self.get_remaining_ships or self.get_invalid_action_mask:
+            remaining_ships = {'remaining_ships': self.remaining_ships} if self.get_remaining_ships else {}
+            invalid_action_mask = {
+                'valid_actions': self.observation[..., 0] == 0} if self.get_invalid_action_mask else {}
+            return {'observation': self.observation} | remaining_ships | invalid_action_mask
+
+        return self.observation
 
     # TODO re-render example images for README.md
     def render(self, mode='human'):
