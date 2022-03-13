@@ -202,7 +202,7 @@ class BattleshipEnv(gym.Env):
         if self.get_remaining_ships or self.get_invalid_action_mask:
             remaining_ships = {'remaining_ships': self.remaining_ships} if self.get_remaining_ships else {}
             invalid_action_mask = {
-                'valid_actions': self.observation[..., 0] == 0} if self.get_invalid_action_mask else {}
+                'valid_actions': self.observation[..., 0].flatten() == 0} if self.get_invalid_action_mask else {}
             return {'observation': self.observation} | remaining_ships | invalid_action_mask
 
         return self.observation

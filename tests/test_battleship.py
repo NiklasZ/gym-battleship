@@ -127,10 +127,10 @@ def test_miss_ship_2():
     assert not done
     assert remaining_ships == {3: 1}
     assert np.all(valid_actions == np.array([[False, True, True, True, True],
+                                             [True, True, True, True, True],
                                             [True, True, True, True, True],
                                             [True, True, True, True, True],
-                                            [True, True, True, True, True],
-                                            [True, True, True, True, True]]))
+                                            [True, True, True, True, True]]).flatten())
 
     # Aim at same spot again
     observation, reward, done, _ = env.step((0, 0))
@@ -147,7 +147,7 @@ def test_miss_ship_2():
                                             [True, True, True, True, True],
                                             [True, True, True, True, True],
                                             [True, True, True, True, True],
-                                            [True, True, True, True, True]]))
+                                            [True, True, True, True, True]]).flatten())
 
 def test_hit_ship():
     env = BattleshipEnv(board_size=(5, 5),
