@@ -73,7 +73,7 @@ class BattleshipEnv(gym.Env):
         if get_invalid_action_mask or get_remaining_ships:
             action_mask = {
                 'valid_actions': spaces.Box(low=0, high=1, shape=self.board_size,
-                                            dtype=np.int)} if get_invalid_action_mask else {}
+                                            dtype=int)} if get_invalid_action_mask else {}
             # TODO add remaining ships here.
             self.observation_space = spaces.Dict({
                                                      'observation': spaces.Box(low=0, high=1,
