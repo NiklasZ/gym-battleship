@@ -78,7 +78,7 @@ def test_miss_ship():
     env.ship_positions = [Ship(min_x=0, max_x=2, min_y=4, max_y=5)]
 
     # 1st shot
-    state, reward, done = env.step((0, 0))
+    state, reward, done, _ = env.step((0, 0))
     assert np.count_nonzero(state[..., 0]) == 1
     assert state[0, 0, 0] == 1
     assert np.count_nonzero(state[..., 1]) == 1
@@ -87,7 +87,7 @@ def test_miss_ship():
     assert not done
 
     # Aim at same spot again
-    state, reward, done = env.step((0, 0))
+    state, reward, done, _ = env.step((0, 0))
     assert np.count_nonzero(state[..., 0]) == 1
     assert state[0, 0, 0] == 1
     assert np.count_nonzero(state[..., 1]) == 1
@@ -116,7 +116,7 @@ def test_miss_ship_2():
     env.ship_positions = [Ship(min_x=0, max_x=2, min_y=4, max_y=5)]
 
     # 1st shot
-    observation, reward, done = env.step((0, 0))
+    observation, reward, done, _ = env.step((0, 0))
     state, remaining_ships, valid_actions = observation['observation'], observation['remaining_ships'], observation[
         'valid_actions']
     assert np.count_nonzero(state[..., 0]) == 1
@@ -133,7 +133,7 @@ def test_miss_ship_2():
                                             [True, True, True, True, True]]))
 
     # Aim at same spot again
-    observation, reward, done = env.step((0, 0))
+    observation, reward, done, _ = env.step((0, 0))
     state, remaining_ships, valid_actions = observation['observation'], observation['remaining_ships'], observation[
         'valid_actions']
     assert np.count_nonzero(state[..., 0]) == 1
@@ -166,7 +166,7 @@ def test_hit_ship():
     env.ship_positions = [Ship(min_x=0, max_x=2, min_y=4, max_y=5)]
 
     # 1st shot
-    state, reward, done = env.step((0, 4))
+    state, reward, done, _ = env.step((0, 4))
     assert np.count_nonzero(state[..., 0] == 1) == 1
     assert state[0, 4, 0] == 1
     assert np.count_nonzero(state[..., 2] == 1) == 1
@@ -175,7 +175,7 @@ def test_hit_ship():
     assert not done
 
     # Aim at same spot again
-    state, reward, done = env.step((0, 4))
+    state, reward, done, _ = env.step((0, 4))
     assert np.count_nonzero(state[..., 0] == 1) == 1
     assert state[0, 4, 0] == 1
     assert np.count_nonzero(state[..., 2] == 1) == 1
@@ -201,7 +201,7 @@ def test_sink_ship():
     env.ship_positions = [Ship(min_x=0, max_x=1, min_y=0, max_y=2), Ship(min_x=0, max_x=2, min_y=4, max_y=5)]
 
     # 1st shot
-    state, reward, done = env.step((0, 0))
+    state, reward, done, _ = env.step((0, 0))
     assert np.count_nonzero(state[..., 0] == 1) == 1
     assert state[0, 0, 0] == 1
     assert np.count_nonzero(state[..., 2] == 1) == 1
@@ -210,7 +210,7 @@ def test_sink_ship():
     assert not done
 
     # 2nd shot
-    state, reward, done = env.step((0, 1))
+    state, reward, done, _ = env.step((0, 1))
     assert np.count_nonzero(state[..., 0] == 1) == 2
     assert np.count_nonzero(state[..., 2] == 1) == 0
     assert np.count_nonzero(state[..., 3] == 1) == 2
@@ -219,7 +219,7 @@ def test_sink_ship():
     assert not done
 
     # Aim at same spot again
-    state, reward, done = env.step((0, 1))
+    state, reward, done, _ = env.step((0, 1))
     assert np.count_nonzero(state[..., 0] == 1) == 2
     assert reward == -0.5
     assert not done
@@ -228,9 +228,9 @@ def test_sink_ship():
 def test_game_over_turn_limit():
     env = BattleshipEnv(episode_steps=2)
     env.reset()
-    state, reward, done = env.step((0, 0))
+    state, reward, done, _ = env.step((0, 0))
     assert not done
-    state, reward, done = env.step((0, 0))
+    state, reward, done, _ = env.step((0, 0))
     assert done
 
 
@@ -247,13 +247,13 @@ def test_game_over_by_victory():
     env.ship_positions = [Ship(min_x=0, max_x=1, min_y=0, max_y=2)]
 
     # 1st shot
-    state, reward, done = env.step((0, 0))
+    state, reward, done, _ = env.step((0, 0))
     assert np.count_nonzero(state[..., 0] == 1) == 1
     assert reward == 1
     assert not done
 
     # 2nd shot
-    state, reward, done = env.step((0, 1))
+    state, reward, done, _ = env.step((0, 1))
     assert np.count_nonzero(state[..., 0] == 1) == 2
     assert np.count_nonzero(state[..., 3] == 1) == 2
     assert reward == 100
