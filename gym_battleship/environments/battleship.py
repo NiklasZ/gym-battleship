@@ -84,12 +84,15 @@ class BattleshipEnv(gym.Env):
             self.observation_space = spaces.Box(low=0, high=1, shape=(*self.board_size, 4), dtype=np.float32)
 
     def step(self, input_action: Union[int, tuple, np.ndarray]) -> Tuple[Union[np.ndarray, dict], int, bool, dict]:
-        if isinstance(input_action, np.ndarray):
-            size = input_action.size
+        raw_action = input_action
+        # Tensorflow compatibility
+        if callable(getattr(raw_action, 'numpy', None)):
+            raw_action = input_action.numpy()
+
+        if isinstance(raw_action, np.ndarray):
+            size = raw_action.size
             assert 1 <= size <= 2, f'action numpy array must be size 1 or 2. Received {size}'
-            raw_action = np.asscalar(input_action) if size == 1 else (input_action[0], input_action[1])
-        else:
-            raw_action = input_action
+            raw_action = np.asscalar(raw_action) if size == 1 else (raw_action[0], raw_action[1])
 
         if isinstance(raw_action, (int, np.integer)):
             limit = self.board_size[0] * self.board_size[1]
